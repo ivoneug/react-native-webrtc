@@ -365,22 +365,37 @@ class PeerConnectionObserver implements PeerConnection.Observer {
      */
     @Override
     public void onAddTrack(final RtpReceiver receiver, final MediaStream[] mediaStreams) {
-        Log.d(TAG, "onAddTrack");
+    }
+
+    /**
+     * Triggered when the signaling from SetRemoteDescription indicates that a transceiver
+     * will be receiving media from a remote endpoint. This is only called if UNIFIED_PLAN
+     * semantics are specified. The transceiver will be disposed automatically.
+     */
+    @Override
+    public void onTrack(final RtpTransceiver transceiver, final MediaStream[] mediaStreams) {
+        Log.d(TAG, "onTrack");
 
         ThreadUtils.runOnExecutor(() -> {
-            MediaStreamTrack track = receiver.track();
+            final RtpReceiver receiver = transceiver.getReceiver();
+            final MediaStreamTrack track = receiver.track();
 
-            if(track.kind().equals(MediaStreamTrack.VIDEO_TRACK_KIND)){
+            if (remoteTracks.containsKey(track.id())) {
+                // TODO: document this behavior.
+                Log.d(TAG, "onTrack - IGNORING DUPLICATE");
+                return;
+            }
+
+            if (track.kind().equals(MediaStreamTrack.VIDEO_TRACK_KIND)){
                 videoTrackAdapters.addAdapter((VideoTrack) track);
             }
             remoteTracks.put(track.id(), track);
-
 
             WritableMap params = Arguments.createMap();
             WritableArray streams = Arguments.createArray();
 
             for (MediaStream stream : mediaStreams) {
-                // Getting the streamReactTag 
+                // Getting the streamReactTag
                 String streamReactTag = null;
                 for (Map.Entry<String, MediaStream> e : remoteStreams.entrySet()) {
                     if (e.getValue().equals(stream)) {
@@ -398,47 +413,8 @@ class PeerConnectionObserver implements PeerConnection.Observer {
             params.putArray("streams", streams);
             params.putMap("receiver", SerializeUtils.serializeReceiver(id, receiver));
             params.putInt("transceiverOrder", getNextTransceiverId());
-            // Getting the transceiver object associated with the receiver for the event
-            List<RtpTransceiver> transceivers = peerConnection.getTransceivers();
-            for( RtpTransceiver transceiver : transceivers ) {
-                if(transceiver.getReceiver() != null && receiver.id().equals(transceiver.getReceiver().id())) {
-                    params.putMap("transceiver", SerializeUtils.serializeTransceiver(id, transceiver));
-                    break;
-                }
-            }
-            params.putInt("id", this.id);
-
-            webRTCModule.sendEvent("peerConnectionOnTrack", params);
-        });
-    }
-
-    /**
-     * Triggered when the signaling from SetRemoteDescription indicates that a transceiver
-     * will be receiving media from a remote endpoint. This is only called if UNIFIED_PLAN
-     * semantics are specified. The transceiver will be disposed automatically.
-     */
-    @Override
-    public void onTrack(final RtpTransceiver transceiver) {
-        Log.d(TAG, "onTrack");
-
-        ThreadUtils.runOnExecutor(() -> {
-            RtpReceiver receiver = transceiver.getReceiver();
-            MediaStreamTrack track = receiver.track();
-            if (track == null) {
-                return;
-            }
-            if(track.kind().equals(MediaStreamTrack.VIDEO_TRACK_KIND)){
-                videoTrackAdapters.addAdapter((VideoTrack) track);
-            }
-            remoteTracks.put(track.id(), track);
-
-            WritableMap params = Arguments.createMap();
-            WritableArray streams = Arguments.createArray();
-            
-            params.putArray("streams", streams);
-            params.putMap("receiver", SerializeUtils.serializeReceiver(id, receiver));
             params.putMap("transceiver", SerializeUtils.serializeTransceiver(id, transceiver));
-            params.putInt("transceiverOrder", getNextTransceiverId());
+
             params.putInt("id", this.id);
 
             webRTCModule.sendEvent("peerConnectionOnTrack", params);
@@ -451,18 +427,18 @@ class PeerConnectionObserver implements PeerConnection.Observer {
      */
     @Override
     public void onRemoveTrack(RtpReceiver receiver){
-        // According to the W3C spec, we need to send out 
+        // According to the W3C spec, we need to send out
         // the track Id so that we can remove it from the MediaStream objects stored
-        // at the JS layer, which are the same stream objects passed down to 
+        // at the JS layer, which are the same stream objects passed down to
         // the `track` event.
         ThreadUtils.runOnExecutor(() -> {
             MediaStreamTrack track = receiver.track();
             WritableMap params = Arguments.createMap();
             params.putInt("id", this.id);
             params.putString("trackId", track.id());
-            
+
             webRTCModule.sendEvent("peerConnectionOnRemoveTrack", params);
-            
+
         });
     };
 
