@@ -116,10 +116,6 @@ class PeerConnectionObserver implements PeerConnection.Observer {
         return peerConnection.addTransceiver(track, init);
     }
 
-    String getTransceiverId(RtpTransceiver transceiver) {
-        return transceiver.getSender().id();
-    }
-
     RtpTransceiver getTransceiver(String id) {
         if (this.peerConnection == null) {
             return null;
@@ -132,20 +128,6 @@ class PeerConnectionObserver implements PeerConnection.Observer {
         }
         return null;
     }
-
-    public ReadableArray getTransceiversArray() {
-        if (this.peerConnection == null) {
-            return null;
-        }
-
-        List<RtpTransceiver> transceivers = this.peerConnection.getTransceivers();
-        WritableArray transceiversArray = Arguments.createArray();
-        for(RtpTransceiver transceiver: transceivers) {
-            transceiversArray.pushMap(SerializeUtils.serializeTransceiver(id, transceiver));
-        }
-        return transceiversArray;
-    }
-
 
     WritableMap createDataChannel(String label, ReadableMap config) {
         DataChannel.Init init = new DataChannel.Init();
@@ -301,18 +283,6 @@ class PeerConnectionObserver implements PeerConnection.Observer {
             params.putMap("sdp", newSdpMap);
         }
         webRTCModule.sendEvent("peerConnectionIceGatheringChanged", params);
-    }
-
-    private String getReactTagForStream(MediaStream mediaStream) {
-        for (Iterator<Map.Entry<String, MediaStream>> i
-             = remoteStreams.entrySet().iterator();
-             i.hasNext(); ) {
-            Map.Entry<String, MediaStream> e = i.next();
-            if (e.getValue().equals(mediaStream)) {
-                return e.getKey();
-            }
-        }
-        return null;
     }
 
     @Override
