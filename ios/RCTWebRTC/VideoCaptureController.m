@@ -39,11 +39,13 @@ AVCaptureStillImageOutput *stillImageOutput;
     NSInteger captureTarget = [[options valueForKey:@"captureTarget"] intValue];
     NSInteger maxSize = [[options valueForKey:@"maxSize"] intValue];
     CGFloat jpegQuality = [[options valueForKey:@"maxJpegQuality"] floatValue];
+
     if(jpegQuality < 0) {
         jpegQuality = 0;
     } else if(jpegQuality > 1) {
         jpegQuality = 1;
     }
+
     [stillImageOutput captureStillImageAsynchronouslyFromConnection:[stillImageOutput connectionWithMediaType:AVMediaTypeVideo] completionHandler:^(CMSampleBufferRef imageDataSampleBuffer, NSError *error) {
         if (imageDataSampleBuffer) {
             NSData *imageData = [AVCaptureStillImageOutput jpegStillImageNSDataRepresentation:imageDataSampleBuffer];
@@ -59,17 +61,51 @@ AVCaptureStillImageOutput *stillImageOutput;
             CGImageRef rotatedCGImage;
             // Get metadata orientation
             int metadataOrientation = [[imageMetadata objectForKey:(NSString *)kCGImagePropertyOrientation] intValue];
-            rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:0];
-            /*
-            if (metadataOrientation == 6) {
-                rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:270];
-            } else if (metadataOrientation == 1) {
-                rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:0];
-            } else if (metadataOrientation == 3) {
-                rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:180];
+
+            UIInterfaceOrientation orientation = UIApplication.sharedApplication.statusBarOrientation;
+
+            if (self.usingFrontCamera) {
+                switch (orientation) {
+                    case UIInterfaceOrientationPortrait:
+                        rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:270];
+                        break;
+                    case UIInterfaceOrientationLandscapeLeft:
+                        rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:0];
+                        break;
+                    case UIInterfaceOrientationLandscapeRight:
+                        rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:180];
+                        break;
+                    default:
+                        rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:0];
+                        break;
+                }
             } else {
-                rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:0];
-            }*/
+                switch (orientation) {
+                    case UIInterfaceOrientationPortrait:
+                        rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:270];
+                        break;
+                    case UIInterfaceOrientationLandscapeLeft:
+                        rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:180];
+                        break;
+                    case UIInterfaceOrientationLandscapeRight:
+                        rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:0];
+                        break;
+                    default:
+                        rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:0];
+                        break;
+                }
+            }
+
+//            if (metadataOrientation == 6) {
+//                rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:270];
+//            } else if (metadataOrientation == 1) {
+//                rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:0];
+//            } else if (metadataOrientation == 3) {
+//                rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:180];
+//            } else {
+//                rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:0];
+//            }
+
             CGImageRelease(CGImage);
             // Erase metadata orientation
             [imageMetadata removeObjectForKey:(NSString *)kCGImagePropertyOrientation];
@@ -164,16 +200,14 @@ AVCaptureStillImageOutput *stillImageOutput;
     else if (target == RCTCameraCaptureTargetTemp) {
         NSString *fileName = [[NSProcessInfo processInfo] globallyUniqueString];
         NSString *fullPath = [NSString stringWithFormat:@"%@%@.jpg", NSTemporaryDirectory(), fileName];
-        // TODO: check if image successfully stored
-        [imageData writeToFile:fullPath atomically:YES];
-        successCallback(@[fullPath]);
-        // NSError* error;
-        // [imageData writeToFile:fullPath atomically:YES error:&error];
-        // if(error != nil) {
-        //     errorCallback(@[error.description]);
-        // } else {
-        //     successCallback(@[fullPath])
-        // }
+
+         NSError* error;
+        [imageData writeToFile:fullPath options:NSDataWritingAtomic error:&error];
+         if(error != nil) {
+             errorCallback(@[error.description]);
+         } else {
+             successCallback(@[fullPath]);
+         }
     }
 }
 - (CGImageRef)newCGImageRotatedByAngle:(CGImageRef)imgRef angle:(CGFloat)angle
@@ -260,7 +294,7 @@ AVCaptureStillImageOutput *stillImageOutput;
 
         return;
     }
-        
+
     AVCaptureDeviceFormat *format
         = [self selectFormatForDevice:self.device
                       withTargetWidth:self.width
@@ -270,14 +304,14 @@ AVCaptureStillImageOutput *stillImageOutput;
 
         return;
     }
-    
+
     self.selectedFormat = format;
 
     RCTLog(@"[VideoCaptureController] Capture will start");
 
     // Starting the capture happens on another thread. Wait for it.
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    
+
     __weak VideoCaptureController *weakSelf = self;
     [self.capturer startCaptureWithDevice:self.device format:format fps:self.frameRate completionHandler:^(NSError *err) {
         if (err) {
@@ -289,17 +323,7 @@ AVCaptureStillImageOutput *stillImageOutput;
         dispatch_semaphore_signal(semaphore);
     }];
 
-    AVCaptureSession *capSession = _capturer.captureSession;
-    stillImageOutput = [[AVCaptureStillImageOutput alloc] init];
-    [stillImageOutput setHighResolutionStillImageOutputEnabled:true];
-    NSDictionary *outputSettings = @{ AVVideoCodecKey : AVVideoCodecJPEG};
-    [stillImageOutput setOutputSettings:outputSettings];
-    if ([capSession canAddOutput:stillImageOutput])
-    {
-        [capSession addOutput:stillImageOutput];
-    } else {
-        NSLog(@"[VideoCaptureController] Failed to add stillImageOutput, snapshot is not working");
-    }
+    [self initStillImageOutput];
 
     dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
 }
@@ -317,7 +341,7 @@ AVCaptureStillImageOutput *stillImageOutput;
         RCTLog(@"[VideoCaptureController] Capture stopped");
         weakSelf.running = NO;
         weakSelf.device = nil;
-        
+
         dispatch_semaphore_signal(semaphore);
     }];
 
@@ -330,6 +354,25 @@ AVCaptureStillImageOutput *stillImageOutput;
     self.device = nil;
 
     [self startCapture];
+}
+
+- (void)initStillImageOutput {
+    AVCaptureSession *capSession = _capturer.captureSession;
+
+    if (stillImageOutput) {
+        [capSession removeOutput:stillImageOutput];
+    }
+
+    stillImageOutput = [[AVCaptureStillImageOutput alloc] init];
+    [stillImageOutput setHighResolutionStillImageOutputEnabled:true];
+    NSDictionary *outputSettings = @{ AVVideoCodecKey : AVVideoCodecJPEG };
+    [stillImageOutput setOutputSettings:outputSettings];
+
+    if ([capSession canAddOutput:stillImageOutput]) {
+        [capSession addOutput:stillImageOutput];
+    } else {
+        NSLog(@"[VideoCaptureController] Failed to add stillImageOutput, snapshot is not working");
+    }
 }
 
 #pragma mark NSKeyValueObserving
@@ -375,7 +418,7 @@ AVCaptureStillImageOutput *stillImageOutput;
     if (device) {
         [self registerSystemPressureStateObserverForDevice:device];
     }
-    
+
     _device = device;
 }
 
@@ -415,31 +458,31 @@ AVCaptureStillImageOutput *stillImageOutput;
 
 - (void)throttleFrameRateForDevice:(AVCaptureDevice *)device {
     NSError *error = nil;
-    
+
     [device lockForConfiguration:&error];
     if (error) {
         RCTLog(@"[VideoCaptureController] Could not lock device for configuration: %@", error);
         return;
     }
-    
+
     device.activeVideoMinFrameDuration = CMTimeMake(1, 20);
     device.activeVideoMaxFrameDuration = CMTimeMake(1, 15);
-    
+
     [device unlockForConfiguration];
 }
 
 - (void)resetFrameRateForDevice:(AVCaptureDevice *)device {
     NSError *error = nil;
-    
+
     [device lockForConfiguration:&error];
     if (error) {
         RCTLog(@"[VideoCaptureController] Could not lock device for configuration: %@", error);
         return;
     }
-    
+
     device.activeVideoMinFrameDuration = kCMTimeInvalid;
     device.activeVideoMaxFrameDuration = kCMTimeInvalid;
-    
+
     [device unlockForConfiguration];
 }
 
