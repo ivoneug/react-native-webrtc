@@ -10,7 +10,28 @@ const MEDIA_STREAM_TRACK_EVENTS = ['ended', 'mute', 'unmute'];
 
 type MediaStreamTrackState = 'live' | 'ended';
 
+type SnapshotOptions = {
+    maxSize: number,
+    maxJpegQuality: number,
+};
+
 class MediaStreamTrack extends defineCustomEventTarget(...MEDIA_STREAM_TRACK_EVENTS) {
+
+    static constants = {
+        captureTarget: {
+            memory: 'memory',
+            temp: 'temp',
+            disk: 'disk',
+            cameraRoll: 'cameraRoll'
+        }
+    };
+
+    static defaults = {
+        captureTarget: MediaStreamTrack.constants.captureTarget.temp,
+        maxSize: 2000,
+        maxJpegQuality: 1
+    };
+
     _constraints: object;
     _enabled: boolean;
     _settings: object;
@@ -78,6 +99,17 @@ class MediaStreamTrack extends defineCustomEventTarget(...MEDIA_STREAM_TRACK_EVE
         WebRTCModule.mediaStreamTrackSwitchCamera(this.id);
     }
 
+    _convertToNativeOptions(options) {
+        let mutableDefaults = { maxSize: 0, maxJpegQuality: 0 };
+        mutableDefaults.maxSize = MediaStreamTrack.defaults.maxSize;
+        mutableDefaults.maxJpegQuality = MediaStreamTrack.defaults.maxJpegQuality;
+        const mergedOptions = Object.assign(mutableDefaults, options);
+        if (typeof mergedOptions.captureTarget === 'string') {
+            mergedOptions.captureTarget = WebRTCModule.CaptureTarget[options.captureTarget];
+        }
+        return mergedOptions;
+    }
+
     applyConstraints() {
         throw new Error('Not implemented.');
     }
@@ -101,6 +133,12 @@ class MediaStreamTrack extends defineCustomEventTarget(...MEDIA_STREAM_TRACK_EVE
     release() {
         WebRTCModule.mediaStreamTrackRelease(this.id);
     }
+
+    takePicture(options: SnapshotOptions, success: (any) => {}, error: (any) => {}) {
+        const nativeOptions = this._convertToNativeOptions(options);
+        WebRTCModule.takePicture(nativeOptions, this.id, success, error);
+    }
+
 }
 
 export default MediaStreamTrack;

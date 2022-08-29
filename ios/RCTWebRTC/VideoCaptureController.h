@@ -4,6 +4,11 @@
 
 #import "CaptureController.h"
 
+#import <React/RCTBridge.h>
+#import <React/RCTEventDispatcher.h>
+#import <React/RCTLog.h>
+#import <React/RCTUtils.h>
+
 @interface VideoCaptureController : CaptureController
 
 @property (nonatomic, readonly, strong) AVCaptureDeviceFormat *selectedFormat;
@@ -14,5 +19,8 @@
 -(void)startCapture;
 -(void)stopCapture;
 -(void)switchCamera;
+-(void)takePicture:(NSDictionary *)options
+   successCallback:(RCTResponseSenderBlock)successCallback
+     errorCallback: (RCTResponseSenderBlock)errorCallback;
 
 @end
